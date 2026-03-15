@@ -14,9 +14,11 @@
 
 ```
 sam-3d-objects/
+├── app_config.json        # 应用配置文件（含 TestMode）
 ├── main.py               # Uvicorn 启动入口，组合 API app
 └── api/
     ├── __init__.py       # FastAPI app 工厂 + lifespan 生命周期钩子
+  ├── app_config.py     # 读取 app_config.json 配置
     ├── models.py         # 数据模型：JobRecord dataclass + Pydantic 响应 Schema
     ├── store.py          # 线程安全的内存任务状态仓库 InMemoryJobStore
     ├── worker.py         # 后台单线程 Worker + 推理模型懒加载
@@ -83,8 +85,40 @@ storage/jobs/{job_id}/
 
 ## 配置
 
+### 1) 应用配置文件（app_config.json）
+
+```json
+{
+  "TestMode": false,
+  "MockDataDir": "Test",
+  "MockPlyFile": "mockup.ply",
+  "MockGlbFile": "mockup.glb",
+  "MockSleepSeconds": 10
+}
+```
+
+字段说明：
+
+- `TestMode`：为 `true` 时，Worker 不做真实推理。
+- `MockDataDir`：mock 文件目录，默认是项目根目录下的 `Test/`。
+- `MockPlyFile`：mock PLY 文件名。
+- `MockGlbFile`：mock GLB 文件名。
+- `MockSleepSeconds`：模拟耗时秒数，默认 10 秒。
+
+TestMode 行为：
+
+1. 任务进入 `running` 后，Worker 先 `sleep 10` 秒（可配置）。
+2. 从 `Test/mockup.ply` 和 `Test/mockup.glb` 复制文件到任务输出目录。
+3. 输出文件名固定为 `outputs/splat.ply` 与 `outputs/mesh.glb`。
+4. 任务状态置为 `succeeded`，用于联调 Job/轮询/下载 API。
+
+> 注意：如果 mock 文件不存在，任务会变为 `failed` 并返回错误信息。
+
+### 2) 环境变量
+
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
+| `APP_CONFIG_FILE` | `app_config.json` | 应用配置文件路径 |
 | `SAM3D_CONFIG_FILE` | `checkpoints/hf/pipeline.yaml` | 推理 pipeline 配置文件路径 |
 | `SAM3D_STORAGE_ROOT` | `./storage` | 任务文件存储根目录 |
 
@@ -134,3 +168,12 @@ curl -OJ http://localhost:8000/v1/jobs/<job_id>/artifacts/ply
 - 运行中的任务无法强制取消（仅支持取消排队中的任务）。
 - 暂不鉴权（适用于内网/开发环境）。
 - 无自动任务清理（需手动删除 `storage/jobs/` 目录下的旧任务）。
+
+---
+
+## TestMode 快速验证
+
+1. 准备 `Test/mockup.ply` 与 `Test/mockup.glb`。
+2. 将 `app_config.json` 中 `TestMode` 改为 `true`。
+3. 启动服务并提交任务。
+4. 约 10 秒后任务应变为 `succeeded`，可直接下载 mock 产物。

@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import os
 import queue
+import shutil
 import sys
 import threading
+import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +29,7 @@ import logging
 import numpy as np
 from PIL import Image
 
+from .app_config import load_app_config
 from .models import JobStatus
 from .store import job_store
 
@@ -49,6 +52,39 @@ _stop_event = threading.Event()
 
 _inference: Optional[Any] = None
 _inference_lock = threading.Lock()
+_app_config = load_app_config()
+
+
+def _resolve_mock_path(base_dir: str, file_name: str) -> Path:
+    base = Path(base_dir)
+    if base.is_absolute():
+        return base / file_name
+    repo_root = Path(__file__).resolve().parent.parent
+    return repo_root / base / file_name
+
+
+def _run_test_mode_job(job_id: str, outputs_dir: Path) -> None:
+    job_store.update(job_id, progress_stage="test_mode_sleep")
+    logger.info("[{}] TestMode enabled, sleeping {} seconds", job_id, _app_config.mock_sleep_seconds)
+    time.sleep(max(0, _app_config.mock_sleep_seconds))
+
+    src_ply = _resolve_mock_path(_app_config.mock_data_dir, _app_config.mock_ply_file)
+    src_glb = _resolve_mock_path(_app_config.mock_data_dir, _app_config.mock_glb_file)
+
+    if not src_ply.exists():
+        raise FileNotFoundError(f"Mock PLY not found: {src_ply}")
+    if not src_glb.exists():
+        raise FileNotFoundError(f"Mock GLB not found: {src_glb}")
+
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    job_store.update(job_id, progress_stage="copying_mock_artifacts")
+
+    dst_ply = outputs_dir / "splat.ply"
+    dst_glb = outputs_dir / "mesh.glb"
+    shutil.copy2(src_ply, dst_ply)
+    shutil.copy2(src_glb, dst_glb)
+
+    logger.info("[{}] Copied mock artifacts: {} and {}", job_id, dst_ply, dst_glb)
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +189,19 @@ def _run_job(job_id: str) -> None:
     logger.info("[{}] Starting (seed={})", job_id, job.seed)
 
     try:
+        outputs_dir = Path(job.outputs_dir)
+
+        if _app_config.test_mode:
+            _run_test_mode_job(job_id, outputs_dir)
+            job_store.update(
+                job_id,
+                status=JobStatus.SUCCEEDED,
+                progress_stage="done",
+                finished_at=datetime.now(timezone.utc),
+            )
+            logger.info("[{}] Completed successfully in TestMode", job_id)
+            return
+
         inference = _get_inference()
 
         # ---- Load inputs ------------------------------------------------
@@ -186,7 +235,6 @@ def _run_job(job_id: str) -> None:
         )
 
         # ---- Save artifacts ---------------------------------------------
-        outputs_dir = Path(job.outputs_dir)
         outputs_dir.mkdir(parents=True, exist_ok=True)
 
         job_store.update(job_id, progress_stage="saving_ply")

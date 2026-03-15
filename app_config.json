@@ -1,0 +1,7 @@
+{
+  "TestMode": true,
+  "MockDataDir": "Test",
+  "MockPlyFile": "mockup.ply",
+  "MockGlbFile": "mockup.glb",
+  "MockSleepSeconds": 10
+}

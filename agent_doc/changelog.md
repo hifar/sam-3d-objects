@@ -2,6 +2,82 @@
 
 ---
 
+## 2026-03-15 — 新增 TestMode 配置化 Mock 推理流程
+
+### 新增文件
+
+#### `app_config.json`（新建）
+- 新增应用级配置文件，默认内容：
+
+```json
+{
+  "TestMode": false,
+  "MockDataDir": "Test",
+  "MockPlyFile": "mockup.ply",
+  "MockGlbFile": "mockup.glb",
+  "MockSleepSeconds": 10
+}
+```
+
+- 该文件用于控制 Worker 是否进入 mock 测试模式。
+
+---
+
+#### `api/app_config.py`（新建）
+- 新增 `AppConfig` dataclass，定义应用配置结构：
+  - `test_mode`
+  - `mock_data_dir`
+  - `mock_ply_file`
+  - `mock_glb_file`
+  - `mock_sleep_seconds`
+- 新增 `load_app_config()`：
+  - 默认从项目根目录 `app_config.json` 读取。
+  - 支持通过环境变量 `APP_CONFIG_FILE` 覆盖路径。
+  - 文件不存在时回退到内置默认值（`TestMode=False`）。
+
+---
+
+### 修改文件
+
+#### `api/worker.py`
+
+1. 新增配置接入
+- 引入 `load_app_config()` 并在模块加载时初始化 `_app_config`。
+
+2. 新增 TestMode 辅助逻辑
+- 新增 `_resolve_mock_path(base_dir, file_name)`：
+  - 兼容绝对路径和相对路径。
+  - 相对路径按仓库根目录解析。
+- 新增 `_run_test_mode_job(job_id, outputs_dir)`：
+  - 更新 `progress_stage=test_mode_sleep`
+  - 按 `MockSleepSeconds` 执行 `time.sleep(...)`
+  - 检查 mock 文件存在性（`mockup.ply` / `mockup.glb`）
+  - 更新 `progress_stage=copying_mock_artifacts`
+  - 复制到输出目录：
+    - `outputs/splat.ply`
+    - `outputs/mesh.glb`
+
+3. `_run_job(job_id)` 分支改造
+- 在真实推理前增加 TestMode 分支：
+  - 若 `TestMode=True`：执行 mock 流程，标记 `SUCCEEDED`，并 `return`。
+  - 若 `TestMode=False`：保持原真实推理流程不变。
+
+4. 新增依赖导入
+- 增加 `shutil`、`time` 导入用于文件复制和延时模拟。
+
+---
+
+### 行为变化（对 API 影响）
+
+- 当 `app_config.json` 中 `TestMode=true` 时：
+  - `POST /v1/jobs` 提交后，Worker 不调用模型推理。
+  - 任务约 10 秒后完成（可配置）。
+  - 下载接口返回的是 `Test/` 目录下 mock 文件复制后的结果。
+- 当 `TestMode=false` 时：
+  - 行为与之前一致，执行真实 GPU 推理。
+
+---
+
 ## 2026-03-15 — 初始 FastAPI REST API 服务搭建
 
 ### 新增文件
