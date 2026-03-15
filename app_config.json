@@ -3,5 +3,9 @@
   "MockDataDir": "Test",
   "MockPlyFile": "mockup.ply",
   "MockGlbFile": "mockup.glb",
-  "MockSleepSeconds": 10
+  "MockSleepSeconds": 10,
+  "AuthMode": true,
+  "ApiKeys": [
+    "1234"
+  ]
 }

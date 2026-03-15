@@ -2,6 +2,61 @@
 
 ---
 
+## 2026-03-15 — 新增 AuthMode API Key 鉴权（Bearer Token）
+
+### 修改文件
+
+#### `app_config.json`
+- 配置新增：
+  - `AuthMode`：是否开启鉴权
+  - `ApiKeys`：允许的 API Key 列表
+- 鉴权策略改为由配置驱动，服务启动后按配置值生效。
+
+---
+
+#### `api/app_config.py`
+- `AppConfig` dataclass 新增字段：
+  - `auth_mode: bool`
+  - `api_keys: frozenset`
+- `load_app_config()` 新增配置解析：
+  - 读取 `AuthMode`
+  - 读取 `ApiKeys` 并转换为 `frozenset`（便于快速查找）
+
+---
+
+#### `api/routes.py`
+- 新增鉴权依赖逻辑：
+  - 引入 `HTTPBearer(auto_error=False)`
+  - 新增 `_require_auth(...)` 依赖函数
+- 鉴权规则：
+  1. `AuthMode=false`：直接放行
+  2. `AuthMode=true` 且无有效 `Authorization: Bearer <token>`：返回 `401`
+  3. `AuthMode=true` 且 token 不在 `ApiKeys`：返回 `403`
+- 业务端点全部接入 `dependencies=[Depends(_require_auth)]`：
+  - `POST /v1/jobs`
+  - `GET /v1/jobs`
+  - `GET /v1/jobs/{job_id}`
+  - `DELETE /v1/jobs/{job_id}`
+  - `GET /v1/jobs/{job_id}/result`
+  - `GET /v1/jobs/{job_id}/artifacts/ply`
+  - `GET /v1/jobs/{job_id}/artifacts/mesh_glb`
+- `GET /v1/health` 保持免鉴权，便于存活探针与运维检查。
+
+---
+
+### 行为变化（对 API 使用影响）
+
+- 当配置 `AuthMode=true` 时，调用业务 API 必须附带 Bearer Token。
+- 示例请求头：
+
+```http
+Authorization: Bearer <api_key>
+```
+
+- 可通过修改 `app_config.json` 的 `ApiKeys` 实现固定 key 的轮换和管理。
+
+---
+
 ## 2026-03-15 — 新增 TestMode 配置化 Mock 推理流程
 
 ### 新增文件

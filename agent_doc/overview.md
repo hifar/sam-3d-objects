@@ -14,7 +14,7 @@
 
 ```
 sam-3d-objects/
-├── app_config.json        # 应用配置文件（含 TestMode）
+├── app_config.json        # 应用配置文件（含 TestMode/AuthMode）
 ├── main.py               # Uvicorn 启动入口，组合 API app
 └── api/
     ├── __init__.py       # FastAPI app 工厂 + lifespan 生命周期钩子
@@ -93,7 +93,9 @@ storage/jobs/{job_id}/
   "MockDataDir": "Test",
   "MockPlyFile": "mockup.ply",
   "MockGlbFile": "mockup.glb",
-  "MockSleepSeconds": 10
+  "MockSleepSeconds": 10,
+  "AuthMode": false,
+  "ApiKeys": ["change-me-before-use"]
 }
 ```
 
@@ -104,6 +106,8 @@ storage/jobs/{job_id}/
 - `MockPlyFile`：mock PLY 文件名。
 - `MockGlbFile`：mock GLB 文件名。
 - `MockSleepSeconds`：模拟耗时秒数，默认 10 秒。
+- `AuthMode`：为 `true` 时开启 API Key 鉴权。
+- `ApiKeys`：可用 API Key 列表（在 `Authorization: Bearer <token>` 中使用）。
 
 TestMode 行为：
 
@@ -113,6 +117,13 @@ TestMode 行为：
 4. 任务状态置为 `succeeded`，用于联调 Job/轮询/下载 API。
 
 > 注意：如果 mock 文件不存在，任务会变为 `failed` 并返回错误信息。
+
+AuthMode 行为：
+
+1. 当 `AuthMode=false`：所有业务 API 免鉴权。
+2. 当 `AuthMode=true`：除 `/v1/health` 外，所有业务 API 都需要 Bearer Token。
+3. Header 格式：`Authorization: Bearer <api_key>`。
+4. 缺少或格式错误时返回 `401`；Token 不在 `ApiKeys` 列表时返回 `403`。
 
 ### 2) 环境变量
 
@@ -160,13 +171,26 @@ curl http://localhost:8000/v1/jobs/<job_id>/result
 curl -OJ http://localhost:8000/v1/jobs/<job_id>/artifacts/ply
 ```
 
+启用 AuthMode 时示例：
+
+```bash
+# 提交任务（携带 Bearer Token）
+curl -X POST http://localhost:8000/v1/jobs \
+  -H "Authorization: Bearer 1234" \
+  -F "image=@photo.png"
+
+# 查询任务状态
+curl http://localhost:8000/v1/jobs/<job_id> \
+  -H "Authorization: Bearer 1234"
+```
+
 ---
 
 ## 当前版本限制（v1）
 
 - 任务状态存储在内存中，服务重启后丢失。
 - 运行中的任务无法强制取消（仅支持取消排队中的任务）。
-- 暂不鉴权（适用于内网/开发环境）。
+- 鉴权为固定 API Key 模式（`app_config.json`），不支持用户体系和细粒度权限控制。
 - 无自动任务清理（需手动删除 `storage/jobs/` 目录下的旧任务）。
 
 ---

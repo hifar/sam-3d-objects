@@ -13,6 +13,8 @@ class AppConfig:
     mock_ply_file: str = "mockup.ply"
     mock_glb_file: str = "mockup.glb"
     mock_sleep_seconds: int = 10
+    auth_mode: bool = False
+    api_keys: frozenset = frozenset()
 
 
 def load_app_config() -> AppConfig:
@@ -34,4 +36,6 @@ def load_app_config() -> AppConfig:
         mock_ply_file=str(raw.get("MockPlyFile", "mockup.ply")),
         mock_glb_file=str(raw.get("MockGlbFile", "mockup.glb")),
         mock_sleep_seconds=int(raw.get("MockSleepSeconds", 10)),
+        auth_mode=bool(raw.get("AuthMode", False)),
+        api_keys=frozenset(str(k) for k in raw.get("ApiKeys", [])),
     )

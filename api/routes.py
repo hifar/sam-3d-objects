@@ -19,15 +19,39 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Security, UploadFile, status
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from . import worker
+from .app_config import load_app_config
 from .models import ArtifactInfo, JobListOut, JobOut, JobRecord, JobResultOut, JobStatus
 from .store import job_store
 from .worker import STORAGE_ROOT
 
 router = APIRouter()
+
+_cfg = load_app_config()
+_bearer = HTTPBearer(auto_error=False)
+
+
+def _require_auth(
+    credentials: HTTPAuthorizationCredentials | None = Security(_bearer),
+) -> None:
+    """FastAPI dependency that enforces Bearer-Token auth when AuthMode=true."""
+    if not _cfg.auth_mode:
+        return
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or malformed Authorization header. Expected: Bearer <token>",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if credentials.credentials not in _cfg.api_keys:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid API key",
+        )
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -93,6 +117,7 @@ def health() -> dict:
     status_code=status.HTTP_202_ACCEPTED,
     response_model=JobOut,
     tags=["Jobs"],
+    dependencies=[Depends(_require_auth)],
     summary="Upload image and create a 3D generation job",
     description=(
         "Upload a PNG/JPEG/WebP image (and an optional binary mask) to start an "
@@ -179,6 +204,7 @@ async def create_job(
     "/jobs",
     response_model=JobListOut,
     tags=["Jobs"],
+    dependencies=[Depends(_require_auth)],
     summary="List all jobs (paginated, filterable by status)",
 )
 def list_jobs(
@@ -198,6 +224,7 @@ def list_jobs(
     "/jobs/{job_id}",
     response_model=JobOut,
     tags=["Jobs"],
+    dependencies=[Depends(_require_auth)],
     summary="Get job status and progress",
 )
 def get_job(job_id: str) -> JobOut:
@@ -208,6 +235,7 @@ def get_job(job_id: str) -> JobOut:
     "/jobs/{job_id}",
     status_code=status.HTTP_200_OK,
     tags=["Jobs"],
+    dependencies=[Depends(_require_auth)],
     summary="Cancel a queued job",
     description="Only jobs in `queued` state can be canceled. Running jobs cannot be interrupted.",
 )
@@ -234,6 +262,7 @@ def cancel_job(job_id: str) -> dict:
     "/jobs/{job_id}/result",
     response_model=JobResultOut,
     tags=["Artifacts"],
+    dependencies=[Depends(_require_auth)],
     summary="Get the artifact manifest of a completed job",
 )
 def get_result(job_id: str) -> JobResultOut:
@@ -263,6 +292,7 @@ def get_result(job_id: str) -> JobResultOut:
 @router.get(
     "/jobs/{job_id}/artifacts/ply",
     tags=["Artifacts"],
+    dependencies=[Depends(_require_auth)],
     summary="Download the Gaussian Splat PLY file",
 )
 def download_ply(job_id: str) -> FileResponse:
@@ -285,6 +315,7 @@ def download_ply(job_id: str) -> FileResponse:
 @router.get(
     "/jobs/{job_id}/artifacts/mesh_glb",
     tags=["Artifacts"],
+    dependencies=[Depends(_require_auth)],
     summary="Download the mesh GLB file (only available when generate_mesh=true)",
 )
 def download_glb(job_id: str) -> FileResponse:
