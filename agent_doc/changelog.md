@@ -2,6 +2,54 @@
 
 ---
 
+## 2026-03-15 — MoGe 增加离线加载与可配置模型来源
+
+### 修改文件
+
+#### `notebook/mesh_alignment.py`
+- `get_moge_pointcloud(...)` 签名变更：
+  - 从：`get_moge_pointcloud(image_tensor, device='cuda')`
+  - 到：`get_moge_pointcloud(image_tensor, device='cuda', moge_model_source=None)`
+- 模型来源解析逻辑新增：
+  - 优先使用函数参数 `moge_model_source`
+  - 其次读取环境变量 `MOGE_MODEL_SOURCE`
+  - 最后回退默认值 `Ruicheng/moge-vitl`
+- 离线控制逻辑新增：
+  - 当 `MOGE_OFFLINE=1` 时，自动执行 `os.environ.setdefault("HF_HUB_OFFLINE", "1")`
+  - 目标是让 HuggingFace 在网络不可达场景下快速离线处理，避免重复连接重试
+- 新增加载来源日志：
+  - `print("[INFO] Loading MoGe model from: ...")`
+
+---
+
+#### `notebook/mesh_alignment.py`
+- `process_3db_alignment(...)` 签名变更：
+  - 新增参数 `moge_model_source=None`
+- 调用链透传：
+  - `get_moge_pointcloud(image_tensor, device, moge_model_source=moge_model_source)`
+
+---
+
+### 行为变化
+
+1. 网络可用且未设置离线变量时：
+   - 行为与之前基本一致，默认从 `Ruicheng/moge-vitl` 拉取/缓存模型。
+2. 指定本地目录时（`MOGE_MODEL_SOURCE=/path/to/local/model`）：
+   - 优先从本地路径加载模型，减少外网依赖。
+3. 设置 `MOGE_OFFLINE=1` 时：
+   - 自动启用 HuggingFace Hub 离线兜底，避免“网络不可达 + 多次 retry”导致的长等待。
+
+---
+
+### 兼容性说明
+
+- 该改动保持向后兼容：
+  - 旧调用方不传 `moge_model_source` 仍可运行。
+- 该改动主要覆盖 `notebook/mesh_alignment.py` 路径；
+  - API 主推理流水线中的其他 MoGe 初始化路径若存在独立实现，需按同样策略单独接入。
+
+---
+
 ## 2026-03-15 — 新增 AuthMode API Key 鉴权（Bearer Token）
 
 ### 修改文件

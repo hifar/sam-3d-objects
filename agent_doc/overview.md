@@ -132,6 +132,25 @@ AuthMode 行为：
 | `APP_CONFIG_FILE` | `app_config.json` | 应用配置文件路径 |
 | `SAM3D_CONFIG_FILE` | `checkpoints/hf/pipeline.yaml` | 推理 pipeline 配置文件路径 |
 | `SAM3D_STORAGE_ROOT` | `./storage` | 任务文件存储根目录 |
+| `MOGE_MODEL_SOURCE` | `Ruicheng/moge-vitl` | MoGe 模型来源（可设为本地目录以离线加载） |
+| `MOGE_OFFLINE` | `0` | 设为 `1` 时启用离线优先逻辑，避免网络重试 |
+| `HF_HUB_OFFLINE` | 未设置 | HuggingFace Hub 离线开关（`MOGE_OFFLINE=1` 时自动兜底设为 `1`） |
+
+### 3) MoGe 离线加载（摘要）
+
+为避免网络不可达时反复出现 HuggingFace connection retry，`notebook/mesh_alignment.py` 已支持“本地权重 + 离线模式”：
+
+1. 模型来源不再硬编码，可通过参数 `moge_model_source` 或环境变量 `MOGE_MODEL_SOURCE` 指定。
+2. 当 `MOGE_OFFLINE=1` 时，会自动兜底设置 `HF_HUB_OFFLINE=1`，让加载流程快速失败或直接命中本地缓存/本地目录，不再长时间重试。
+3. 默认行为保持兼容：若未设置环境变量，仍使用 `Ruicheng/moge-vitl`。
+
+Linux Bash 示例：
+
+```bash
+export MOGE_MODEL_SOURCE="/path/to/checkpoints/moge-vitl"
+export MOGE_OFFLINE=1
+export HF_HUB_OFFLINE=1
+```
 
 ---
 

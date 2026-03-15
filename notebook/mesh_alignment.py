@@ -32,9 +32,16 @@ def load_3db_mesh(mesh_path, device='cuda'):
     return vertices, faces
 
 
-def get_moge_pointcloud(image_tensor, device='cuda'):
+def get_moge_pointcloud(image_tensor, device='cuda', moge_model_source=None):
     """Generate MoGe point cloud from image tensor."""
-    moge_model = MoGeModel.from_pretrained("Ruicheng/moge-vitl").to(device)
+    model_source = moge_model_source or os.environ.get("MOGE_MODEL_SOURCE", "Ruicheng/moge-vitl")
+
+    # Use offline mode to fail fast instead of retrying unreachable network calls.
+    if os.environ.get("MOGE_OFFLINE", "0") == "1":
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
+    print(f"[INFO] Loading MoGe model from: {model_source}")
+    moge_model = MoGeModel.from_pretrained(model_source).to(device)
     moge_model.eval()
     with torch.no_grad():
         moge_output = moge_model.infer(image_tensor)
@@ -165,7 +172,14 @@ def load_focal_length_from_json(json_path):
         raise
 
 
-def process_3db_alignment(mesh_path, mask_path, image_path, device='cuda', focal_length_json_path=None):
+def process_3db_alignment(
+    mesh_path,
+    mask_path,
+    image_path,
+    device='cuda',
+    focal_length_json_path=None,
+    moge_model_source=None,
+):
     """Complete pipeline for aligning 3DB mesh to MoGe scale."""
     print(f"[INFO] Processing alignment...")
 
@@ -188,7 +202,7 @@ def process_3db_alignment(mesh_path, mask_path, image_path, device='cuda', focal
 
     # Generate MoGe point cloud
     print("[INFO] Generating MoGe point cloud...")
-    moge_output = get_moge_pointcloud(image_tensor, device)
+    moge_output = get_moge_pointcloud(image_tensor, device, moge_model_source=moge_model_source)
 
     # Load focal length from JSON if provided, otherwise compute from MoGe intrinsics
     if focal_length_json_path is not None:
