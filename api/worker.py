@@ -207,13 +207,25 @@ def _run_job(job_id: str) -> None:
         # ---- Load inputs ------------------------------------------------
         job_store.update(job_id, progress_stage="preprocessing")
         inputs_dir = Path(job.inputs_dir)
-        image = np.array(Image.open(inputs_dir / "image.png").convert("RGB"))
+        image_path = inputs_dir / "image.png"
+        image_img = Image.open(image_path)
+        image = np.array(image_img.convert("RGB"))
 
         mask_path = inputs_dir / "mask.png"
         if mask_path.exists():
-            mask = np.array(Image.open(mask_path).convert("L")).astype(np.float32) / 255.0
+            mask_img = Image.open(mask_path)
+            if "A" in mask_img.getbands():
+                # Prefer alpha channel when present in mask.png.
+                mask = np.array(mask_img.getchannel("A")).astype(np.float32) / 255.0
+            else:
+                # Fallback for masks without alpha channel.
+                mask = np.array(mask_img.convert("L")).astype(np.float32) / 255.0
         else:
-            mask = np.ones(image.shape[:2], dtype=np.float32)
+            if "A" in image_img.getbands():
+                # Fallback to image.png alpha when mask.png is absent.
+                mask = np.array(image_img.getchannel("A")).astype(np.float32) / 255.0
+            else:
+                mask = np.ones(image.shape[:2], dtype=np.float32)
 
         # ---- Run pipeline -----------------------------------------------
         job_store.update(job_id, progress_stage="running_stage1")
